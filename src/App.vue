@@ -1,99 +1,183 @@
-
 <template>
   <div class="card">
-    <DataTable
-      :value="customers"
-      rowGroupMode="subheader"
-      groupRowsBy="representative.name"
-      sortMode="single"
-      sortField="representative.name"
-      :sortOrder="1"
-      scrollable
-      scrollHeight="400px"
-      tableStyle="min-width: 50rem"
+    <!-- <div>columns: {{ columns }}</div>
+    <br /> -->
+    <div>groupRowsBy: {{ groupRowsBy }}</div>
+    <br />
+    <div>sortField: {{ sortField }}</div>
+    <br />
+    <div>multiSortMeta: {{ multiSortMeta }}</div>
+    <br />
+    <div
+      class="flex flex-wrap justify-content-center align-content-center card-container blue-container gap-3 mb-3"
     >
-      <Column field="representative.name" header="Representative"></Column>
-      <Column field="name" header="Name" style="min-width: 200px"></Column>
-      <Column field="country" header="Country" style="min-width: 200px">
-        <template #body="slotProps">
-          <div class="flex align-items-center gap-2">
-            <span>TEST : {{ slotProps.data.country.name }}</span>
-          </div>
-        </template>
-      </Column>
-      <Column
-        field="company"
-        header="Company"
-        style="min-width: 200px"
-      ></Column>
-      <Column field="status" header="Status" style="min-width: 200px">
-        <template #body="slotProps">
-          <Tag
-            :value="slotProps.data.status"
-            :severity="getSeverity(slotProps.data.status)"
-          />
-        </template>
-      </Column>
-      <Column field="date" header="Date" style="min-width: 200px"></Column>
+      <div class="p-float-label">
+        <Dropdown
+          id="groupRowsBy"
+          v-model="groupRowsBy[0]"
+          :options="columnsForDD"
+          class="w-12rem"
+          size="small"
+          @change="groupRowsByChange($event)"
+        />
+        <label for="groupRowsBy">groupRowsBy:</label>
+      </div>
+      <div class="p-float-label">
+        <Dropdown
+          id="sortField"
+          v-model="sortField"
+          :options="columnsForDD"
+          :disabled="checked"
+          class="w-12rem"
+          size="small"
+          @change="sortFieldChange($event)"
+        />
+        <label for="sortField">sortField:</label>
+      </div>
+      <div class="flex align-items-center">
+        <label class="flex mr-2">multiple:</label>
+        <InputSwitch
+          v-model="checked"
+          class="flex"
+          @change="switchChange(checked)"
+        />
+      </div>
+      <Button
+        label="reset multiSortMeta"
+        @click="multiSortMeta = []"
+        class="w-14rem"
+      />
+    </div>
+    <DataTable
+      v-model:expandedRowGroups="expandedRowGroups"
+      :value="customers"
+      tableStyle="min-width: 50rem"
+      :rowGroupMode="groupRowsBy ? 'subheader' : null"
+      :groupRowsBy="groupRowsBy"
+      :sortMode="checked ? 'multiple' : 'single'"
+      :sortField="sortField"
+      :multiSortMeta="multiSortMeta"
+      @update:multiSortMeta="multiSortMetaUpdate($event)"
+      @update:sortField="sortFieldUpdate($event)"
+      :sortOrder="1"
+    >
       <template #groupheader="slotProps">
-        <div class="flex align-items-center gap-2">
-          <img
-            :alt="slotProps.data.representative.name"
-            :src="`https://primefaces.org/cdn/primevue/images/avatar/${slotProps.data.representative.image}`"
-            width="32"
-            style="vertical-align: middle"
-          />
-          <span>{{ slotProps.data.representative.name }}</span>
-        </div>
+        <span class="vertical-align-middle ml-2 font-bold line-height-3">
+          {{ slotProps.data[groupRowsBy] }}
+        </span>
       </template>
-      <template #groupfooter="slotProps">
-        <div class="flex justify-content-end font-bold w-full">
-          Total Customers:
-          {{ calculateCustomerTotal(slotProps.data.representative.name) }}
-        </div>
-      </template>
+
+      <Column
+        v-for="col of columns"
+        :key="col"
+        :field="col"
+        :header="col"
+        sortable
+      ></Column>
     </DataTable>
+    <Toast />
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted } from "vue";
+<script>
 import { CustomerService } from "@/service/CustomerService";
 
-onMounted(() => {
-  CustomerService.getCustomersMedium().then((data) => (customers.value = data));
-});
+export default {
+  data() {
+    return {
+      customers: null,
+      columns: null,
+      columnsForDD: null,
+      expandedRowGroups: null,
+      groupRowsBy: [],
+      sortField: null,
+      multiSortMeta: [],
+      checked: false,
+    };
+  },
 
-const customers = ref();
-const calculateCustomerTotal = (name) => {
-  let total = 0;
-
-  if (customers.value) {
-    for (let customer of customers.value) {
-      if (customer.representative.name === name) {
-        total++;
+  mounted() {
+    CustomerService.getCustomersMedium().then((data) => {
+      if (data.length > 0) {
+        this.columns = Object.keys(data[0]);
+        this.columnsForDD = [null].concat(this.columns);
+        this.multiSortMeta = [
+          {
+            field: this.columns[0],
+            order: 1,
+          },
+        ];
       }
-    }
-  }
+      this.customers = data;
+    });
+  },
 
-  return total;
-};
-const getSeverity = (status) => {
-  switch (status) {
-    case "unqualified":
-      return "danger";
+  methods: {
+    groupRowsByChange(event) {
+      if (this.checked) {
+        this.multiSortMeta = [
+          {
+            field: this.columns.filter(
+              (column) => column === this.groupRowsBy[0]
+            )[0],
+            order: 1,
+          },
+        ];
+      } else {
+        this.sortField = event.value;
+      }
+      console.log("Group changed: ", event.value);
+    },
 
-    case "qualified":
-      return "success";
+    sortFieldChange(event) {
+      console.log("Single sort changed: ", event.value);
+    },
 
-    case "new":
-      return "info";
+    switchChange(event) {
+      console.log("Sort mode switched. multiple: ", event);
+      if (event) {
+        this.sortField = null;
+        if (this.groupRowsBy.length > 0 && this.groupRowsBy[0]) {
+          this.multiSortMeta = [
+            {
+              field: this.columns.filter(
+                (column) => column === this.groupRowsBy[0]
+              )[0],
+              order: 1,
+            },
+          ];
+        }
+      } else {
+        this.multiSortMeta = [];
+      }
+    },
 
-    case "negotiation":
-      return "warning";
+    sortFieldUpdate(event) {
+      console.log("Single sort by: ", event);
+      this.sortField = event;
+    },
 
-    case "renewal":
-      return null;
-  }
+    multiSortMetaUpdate(event) {
+      console.log("Multi sort by: ", event);
+      if (
+        event.length === 1 &&
+        this.groupRowsBy.length > 0 &&
+        this.groupRowsBy[0]
+      ) {
+        this.multiSortMeta = [
+          {
+            field: this.columns.filter(
+              (column) => column === this.groupRowsBy[0]
+            )[0],
+            order: 1,
+          },
+        ];
+
+        this.multiSortMeta = this.multiSortMeta.concat(event);
+      } else {
+        this.multiSortMeta = event;
+      }
+    },
+  },
 };
 </script>
